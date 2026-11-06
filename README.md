@@ -3,6 +3,9 @@
 A fast, free drawing app that runs entirely in the browser, inspired by [sketch.io/sketchpad](https://sketch.io/sketchpad/).
 No build step and no dependencies: just static HTML, CSS and JavaScript.
 
+**Live:** <https://karankotz.github.io/sketchpad/>
+
+
 ## Features
 
 - Brush (pen pressure supported), highlighter and eraser
