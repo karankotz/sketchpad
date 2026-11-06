@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sketchpad</title>
+  <meta name="description" content="A free, fast drawing app that runs in your browser.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><img src="favicon.svg" alt="" width="22" height="22"> Sketchpad</div>
+    <div class="actions">
+      <button id="undo" data-icon="undo" title="Undo (Ctrl+Z)" aria-label="Undo"></button>
+      <button id="redo" data-icon="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"></button>
+      <span class="sep"></span>
+      <button id="import" data-icon="image" title="Insert image (or paste / drop one)" aria-label="Insert image"></button>
+      <button id="clear" data-icon="trash" title="Clear canvas" aria-label="Clear canvas"></button>
+      <button id="download" class="primary" data-icon="download" title="Download PNG (Ctrl+S)"><span>Save</span></button>
+    </div>
+    <input type="file" id="file" accept="image/*" hidden>
+  </header>
+
+  <nav class="toolbar" aria-label="Tools">
+    <button class="tool" data-tool="brush" data-icon="brush" title="Brush (B)" aria-label="Brush"></button>
+    <button class="tool" data-tool="marker" data-icon="marker" title="Highlighter (M)" aria-label="Highlighter"></button>
+    <button class="tool" data-tool="eraser" data-icon="eraser" title="Eraser (E)" aria-label="Eraser"></button>
+    <span class="tool-sep"></span>
+    <button class="tool" data-tool="line" data-icon="line" title="Line (L) — hold Shift to snap" aria-label="Line"></button>
+    <button class="tool" data-tool="arrow" data-icon="arrow" title="Arrow (A) — hold Shift to snap" aria-label="Arrow"></button>
+    <button class="tool" data-tool="rect" data-icon="rect" title="Rectangle (R) — hold Shift for square" aria-label="Rectangle"></button>
+    <button class="tool" data-tool="ellipse" data-icon="ellipse" title="Ellipse (O) — hold Shift for circle" aria-label="Ellipse"></button>
+    <button class="tool" data-tool="text" data-icon="text" title="Text (T)" aria-label="Text"></button>
+    <span class="tool-sep"></span>
+    <button class="tool" data-tool="fill" data-icon="bucket" title="Fill (F)" aria-label="Fill"></button>
+    <button class="tool" data-tool="picker" data-icon="pipette" title="Color picker (I)" aria-label="Color picker"></button>
+  </nav>
+
+  <main id="stage">
+    <div id="canvas-wrap">
+      <canvas id="board"></canvas>
+      <canvas id="overlay"></canvas>
+      <div id="cursor"></div>
+    </div>
+  </main>
+
+  <section class="props" aria-label="Tool options">
+    <div class="swatches" id="swatches"></div>
+    <label class="color-custom" title="Custom color"><input type="color" id="color" value="#1e1e1e" aria-label="Custom color"></label>
+    <label class="slider">Size <input type="range" id="size" min="1" max="80" value="6"><output id="size-val">6</output></label>
+    <label class="slider">Opacity <input type="range" id="opacity" min="5" max="100" value="100"><output id="opacity-val">100%</output></label>
+    <label class="toggle"><input type="checkbox" id="fill-shapes"> Fill shapes</label>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
