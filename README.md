@@ -5,14 +5,14 @@ No build step and no dependencies: just static HTML, CSS and JavaScript.
 
 **Live:** <https://karankotz.github.io/sketchpad/>
 
-
 ## Features
 
+- **Live collaboration**: click **Share**, enter your name, and send the link. Anyone who opens it just types a name to join and draw with you in real time, with live cursors and avatars
 - Brush (pen pressure supported), highlighter and eraser
 - Line, arrow, rectangle and ellipse (Shift to snap or constrain), with optional fill
 - Text, paint-bucket fill and color picker
 - Color palette, custom color, size and opacity
-- Undo / redo (50 steps), clear, export to PNG
+- Undo / redo (only your own changes, even on a shared board), clear, export to PNG
 - Insert images via the button, paste (Ctrl/Cmd+V) or drag and drop
 - Autosaves to the browser (localStorage)
 - Works with mouse, touch and stylus, with a mobile layout and dark-mode UI
@@ -30,7 +30,7 @@ No build step and no dependencies: just static HTML, CSS and JavaScript.
 
 ## Run locally
 
-Open `index.html` directly in a browser, or serve the folder:
+Serve the folder (it uses ES modules, so opening `index.html` as a file won't work):
 
 ```sh
 python3 -m http.server 8000
@@ -46,11 +46,28 @@ Any static host works. A few free options:
 - **Vercel**: `npx vercel --prod` from this folder.
 - **Cloudflare Pages**: `npx wrangler pages deploy .`
 
+## How live collaboration works
+
+Browsers connect directly to each other over WebRTC using [Trystero](https://github.com/dmotz/trystero).
+Public Nostr relays are only used so peers can find each other; drawing data goes straight between browsers.
+There's no server to run, so the app stays a static site.
+
+Every drawing action is a small operation (stroke, shape, text, fill, image, clear) in a shared log.
+Peers order the log the same way (Lamport clock, then op id), so every board ends up identical.
+When someone joins, peers exchange their full logs and merge them.
+
+Limitations:
+
+- A board only lives in the browsers of people who have opened it. If everyone leaves, the next visitor sees whatever their own browser saved.
+- Some strict networks (certain corporate or mobile networks) block direct peer connections. Fixing that needs a TURN relay server.
+- Anyone with the link can join and draw, so share it only with people you trust.
+
 ## Project layout
 
 ```
-index.html   page structure
+index.html   page structure and dialogs
 styles.css   layout and theme
-app.js       drawing engine, tools, history, UI wiring
+app.js       drawing engine, operation log, tools, UI wiring
+collab.js    joining, presence, live cursors and syncing
 favicon.svg  app icon
 ```

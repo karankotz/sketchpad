@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Sketchpad</title>
-  <meta name="description" content="A free, fast drawing app that runs in your browser.">
+  <meta name="description" content="A free, fast drawing app that runs in your browser. Draw together live.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -17,6 +17,9 @@
       <span class="sep"></span>
       <button id="import" data-icon="image" title="Insert image (or paste / drop one)" aria-label="Insert image"></button>
       <button id="clear" data-icon="trash" title="Clear canvas" aria-label="Clear canvas"></button>
+      <span class="sep"></span>
+      <div id="presence" class="presence" aria-label="People on this board"></div>
+      <button id="share" data-icon="users" title="Draw together live"><span>Share</span></button>
       <button id="download" class="primary" data-icon="download" title="Download PNG (Ctrl+S)"><span>Save</span></button>
     </div>
     <input type="file" id="file" accept="image/*" hidden>
@@ -43,6 +46,7 @@
       <canvas id="overlay"></canvas>
       <div id="cursor"></div>
     </div>
+    <div id="toast" role="status" hidden></div>
   </main>
 
   <section class="props" aria-label="Tool options">
@@ -53,6 +57,39 @@
     <label class="toggle"><input type="checkbox" id="fill-shapes"> Fill shapes</label>
   </section>
 
-  <script src="app.js"></script>
+  <dialog id="join-dialog" aria-labelledby="join-title">
+    <form id="join-form">
+      <h2 id="join-title">Join live board</h2>
+      <p class="hint">Pick a name so others can see who's drawing.</p>
+      <label class="field">Your name
+        <input id="join-name" maxlength="24" required autocomplete="nickname" placeholder="e.g. Karan">
+      </label>
+      <label class="field" id="room-field">Board code
+        <input id="join-room" maxlength="32" required pattern="[A-Za-z0-9_\-]+" autocapitalize="off" spellcheck="false">
+        <small>Keep this code to start a new board, or type a friend's code to join theirs.</small>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" id="join-cancel">Cancel</button>
+        <button type="submit" class="primary">Join</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="share-dialog" aria-labelledby="share-title">
+    <h2 id="share-title">You're live</h2>
+    <p class="hint">Send this link to anyone. They'll just enter a name to join and draw with you.</p>
+    <div class="share-row">
+      <input id="share-link" readonly aria-label="Board link">
+      <button type="button" id="copy-link" class="primary">Copy link</button>
+    </div>
+    <p id="people-status" class="hint"></p>
+    <ul id="people" class="people"></ul>
+    <div class="dialog-actions">
+      <button type="button" id="leave-room">Leave board</button>
+      <button type="button" id="share-done" class="primary">Done</button>
+    </div>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
 </body>
 </html>
