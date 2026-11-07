@@ -47,8 +47,88 @@ const DOC_PREFIX = 'sketchpad:doc:';
 const FILL_TOLERANCE = 40;
 const COLORS = ['#1e1e1e', '#ffffff', '#868e96', '#e03131', '#f76707', '#f59f00', '#2f9e44', '#1971c2', '#7048e8', '#c2255c', '#99e9f2', '#ffec99'];
 const FREEHAND = new Set(['brush', 'marker', 'eraser']);
-const SHAPES = new Set(['line', 'arrow', 'rect', 'ellipse']);
-const SHORTCUTS = { b: 'brush', m: 'marker', e: 'eraser', l: 'line', a: 'arrow', r: 'rect', o: 'ellipse', t: 'text', f: 'fill', i: 'picker' };
+const SHORTCUTS = { b: 'brush', m: 'marker', e: 'eraser', t: 'text', f: 'fill', i: 'picker' };
+const SHAPE_KEYS = { l: 'line', a: 'arrow', r: 'rect', o: 'ellipse' };
+
+// Shapes are drawn into the dragged box. Lines use the two endpoints; the rest
+// are SVG paths in a 0–100 box, scaled to fit. The same paths draw the menu icons.
+const LINE_SHAPES = new Set(['line', 'arrow', 'double-arrow', 'elbow']);
+const MIRRORED_SHAPES = new Set(['right-triangle', 'block-arrow']); // flip with the drag direction
+
+function starPath(points, inner) {
+  const pts = [];
+  for (let i = 0; i < points * 2; i++) {
+    const r = i % 2 ? inner : 1;
+    const a = -Math.PI / 2 + (i * Math.PI) / points;
+    pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const [minX, minY] = [Math.min(...xs), Math.min(...ys)];
+  const [spanX, spanY] = [Math.max(...xs) - minX, Math.max(...ys) - minY];
+  const fit = ([x, y]) => `${((x - minX) / spanX * 100).toFixed(1)} ${((y - minY) / spanY * 100).toFixed(1)}`;
+  return `M${pts.map(fit).join('L')}Z`;
+}
+
+const SHAPES = new Map([
+  // [name, label, outline path, optional detail strokes]
+  ['line', 'Line (L)', 'M0 100L100 0'],
+  ['arrow', 'Arrow (A)', 'M0 100L100 0M58 0H100V42'],
+  ['double-arrow', 'Double arrow', 'M0 100L100 0M58 0H100V42M42 100H0V58'],
+  ['elbow', 'Elbow connector', 'M0 10H50V90H100M84 76L100 90L84 104'],
+  ['rect', 'Rectangle (R)', 'M0 0H100V100H0Z'],
+  ['rounded', 'Rounded rectangle', 'M20 0H80Q100 0 100 20V80Q100 100 80 100H20Q0 100 0 80V20Q0 0 20 0Z'],
+  ['ellipse', 'Ellipse (O)', 'M0 50A50 50 0 1 0 100 50A50 50 0 1 0 0 50Z'],
+  ['triangle', 'Triangle', 'M50 0L100 100H0Z'],
+  ['right-triangle', 'Right triangle', 'M0 0L100 100H0Z'],
+  ['diamond', 'Diamond', 'M50 0L100 50L50 100L0 50Z'],
+  ['pentagon', 'Pentagon', 'M50 0L100 38L81 100H19L0 38Z'],
+  ['hexagon', 'Hexagon', 'M25 0H75L100 50L75 100H25L0 50Z'],
+  ['octagon', 'Octagon', 'M30 0H70L100 30V70L70 100H30L0 70V30Z'],
+  ['star', 'Star', starPath(5, 0.4)],
+  ['heart', 'Heart', 'M50 100C20 76 0 58 0 32C0 13 13 0 28 0C39 0 47 7 50 16C53 7 61 0 72 0C87 0 100 13 100 32C100 58 80 76 50 100Z'],
+  ['plus', 'Plus', 'M35 0H65V35H100V65H65V100H35V65H0V35H35Z'],
+  ['parallelogram', 'Parallelogram', 'M25 0H100L75 100H0Z'],
+  ['trapezoid', 'Trapezoid', 'M25 0H75L100 100H0Z'],
+  ['block-arrow', 'Block arrow', 'M0 28H58V0L100 50L58 100V72H0Z'],
+  ['speech', 'Speech bubble', 'M12 0H88Q100 0 100 12V64Q100 76 88 76H46L24 100L28 76H12Q0 76 0 64V12Q0 0 12 0Z'],
+  ['cloud', 'Cloud', 'M22 100C8 100 0 90 0 77C0 64 9 55 21 55C19 38 31 25 47 28C52 11 64 0 78 4C92 8 99 22 95 38C99 44 100 52 100 62C100 84 90 100 75 100Z'],
+  ['lightning', 'Lightning', 'M62 0L8 58H46L34 100L92 38H54Z'],
+  // Flowchart
+  ['terminator', 'Terminator (start / end)', 'M25 15H75A25 35 0 0 1 75 85H25A25 35 0 0 1 25 15Z'],
+  ['document', 'Document', 'M0 0H100V84C72 66 62 104 30 96C18 93 8 89 0 84Z'],
+  ['predefined', 'Predefined process', 'M0 0H100V100H0Z', 'M12 0V100M88 0V100'],
+  ['manual-input', 'Manual input', 'M0 25L100 0V100H0Z'],
+  ['delay', 'Delay', 'M0 0H60A40 50 0 0 1 60 100H0Z'],
+  // Architecture
+  ['database', 'Database', 'M0 12A50 12 0 0 1 100 12V88A50 12 0 0 1 0 88Z', 'M0 12A50 12 0 0 0 100 12'],
+  ['queue', 'Queue / stream', 'M12 0H88A12 50 0 0 1 88 100H12A12 50 0 0 1 12 0Z', 'M88 0A12 50 0 0 0 88 100'],
+  ['server', 'Server', 'M0 0H100V100H0Z', 'M0 33.3H100M0 66.7H100M12 16.7H30M12 50H30M12 83.3H30'],
+  ['actor', 'Actor', 'M37 13A13 13 0 1 0 63 13A13 13 0 1 0 37 13Z', 'M50 26V64M16 40H84M50 64L22 100M50 64L78 100'],
+  ['user', 'User', 'M30 24A20 20 0 1 0 70 24A20 20 0 1 0 30 24ZM6 100C6 70 26 54 50 54C74 54 94 70 94 100Z'],
+  ['component', 'Component', 'M16 0H100V100H16Z', 'M0 20H32V36H0ZM0 64H32V80H0Z'],
+  ['folder', 'Folder / package', 'M0 0H38L48 14H100V100H0Z'],
+  ['note', 'Note', 'M0 0H78L100 22V100H0Z', 'M78 0V22H100'],
+  ['browser', 'Web app', 'M0 0H100V100H0Z', 'M0 18H100M9 9H9.1M18 9H18.1M27 9H27.1'],
+  ['mobile', 'Mobile app', 'M14 0H86Q100 0 100 14V86Q100 100 86 100H14Q0 100 0 86V14Q0 0 14 0Z', 'M0 13H100M0 87H100M42 93.5H58'],
+].map(([name, label, d, detail]) => [name, {
+  label,
+  d,
+  detail,
+  path: LINE_SHAPES.has(name) ? null : new Path2D(d),
+  detailPath: detail ? new Path2D(detail) : null,
+}]));
+
+// Menu sections. An entry is a shape name, or [name, label] to show it under a diagram-specific name.
+const SHAPE_GROUPS = [
+  ['Lines & connectors', ['line', 'arrow', 'double-arrow', 'elbow']],
+  ['Basic', ['rect', 'rounded', 'ellipse', 'triangle', 'right-triangle', 'diamond', 'pentagon', 'hexagon', 'octagon',
+    'star', 'heart', 'plus', 'parallelogram', 'trapezoid', 'block-arrow', 'speech', 'cloud', 'lightning']],
+  ['Flowchart', ['terminator', ['rect', 'Process'], ['diamond', 'Decision'], ['parallelogram', 'Data (input / output)'],
+    'document', 'predefined', 'manual-input', 'delay', ['hexagon', 'Preparation']]],
+  ['Architecture', ['database', 'queue', 'server', ['cloud', 'Cloud service'], 'actor', 'user', 'component', 'folder',
+    'note', 'browser', 'mobile']],
+];
 
 // Identifies this tab's ops so undo only touches your own work; survives reloads.
 const clientId = (() => {
@@ -61,7 +141,7 @@ const clientId = (() => {
   }
 })();
 
-const state = { tool: 'brush', prevTool: 'brush', color: COLORS[0], size: 6, opacity: 1, fillShapes: false };
+const state = { tool: 'brush', prevTool: 'brush', shape: 'rect', color: COLORS[0], size: 6, opacity: 1, fill: 'none', dashed: false };
 let W = 0; // logical canvas size (CSS px); backing stores are W*RES x H*RES
 let H = 0;
 let doc = null;     // { key, w, h, origin, clock, ops (sorted), byId }
@@ -249,7 +329,7 @@ function sanitizeOp(o) {
     case 'shape':
       if (!SHAPES.has(o.shape) || !COLOR_RE.test(o.color) || !num(o.width) || !coords('x1', 'y1', 'x2', 'y2')) return null;
       return { ...base, type: 'shape', shape: o.shape, color: o.color, width: clamp(o.width, 0.5, 400), alpha,
-        fill: !!o.fill, x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2 };
+        fill: o.fill === 'tint' ? 'tint' : !!o.fill, dash: !!o.dash, x1: o.x1, y1: o.y1, x2: o.x2, y2: o.y2 };
     case 'text':
       if (typeof o.text !== 'string' || o.text.length > 2000 || !COLOR_RE.test(o.color) || !coords('x', 'y', 'size')) return null;
       return { ...base, type: 'text', text: o.text, color: o.color, alpha, x: o.x, y: o.y, size: clamp(o.size, 4, 400) };
@@ -413,25 +493,67 @@ function drawShapeOp(c, op) {
   c.lineWidth = op.width;
   c.lineCap = 'round';
   c.lineJoin = 'round';
-  c.beginPath();
-  if (shape === 'rect') {
-    c.rect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1));
-  } else if (shape === 'ellipse') {
-    c.ellipse((x1 + x2) / 2, (y1 + y2) / 2, Math.abs(x2 - x1) / 2, Math.abs(y2 - y1) / 2, 0, 0, Math.PI * 2);
-  } else {
-    c.moveTo(x1, y1);
-    c.lineTo(x2, y2);
-    if (shape === 'arrow') {
-      const angle = Math.atan2(y2 - y1, x2 - x1);
-      const head = Math.max(12, op.width * 3.5);
+  c.setLineDash(op.dash ? [op.width * 2, op.width * 2.5] : []);
+  if (LINE_SHAPES.has(shape)) {
+    const midX = (x1 + x2) / 2;
+    const pts = shape === 'elbow' ? [[x1, y1], [midX, y1], [midX, y2], [x2, y2]] : [[x1, y1], [x2, y2]];
+    c.beginPath();
+    c.moveTo(...pts[0]);
+    pts.slice(1).forEach((p) => c.lineTo(...p));
+    c.stroke();
+
+    // Arrowheads stay solid even on dashed lines.
+    const head = Math.max(12, op.width * 3.5);
+    const arrowhead = ([fx, fy], [tx, ty]) => {
+      const angle = Math.atan2(ty - fy, tx - fx);
       for (const side of [-1, 1]) {
-        c.moveTo(x2, y2);
-        c.lineTo(x2 - head * Math.cos(angle + side * Math.PI / 7), y2 - head * Math.sin(angle + side * Math.PI / 7));
+        c.moveTo(tx, ty);
+        c.lineTo(tx - head * Math.cos(angle + side * Math.PI / 7), ty - head * Math.sin(angle + side * Math.PI / 7));
       }
-    }
+    };
+    const end = pts.at(-1);
+    const beforeEnd = pts.findLast((p) => p[0] !== end[0] || p[1] !== end[1]) ?? pts[0];
+    c.setLineDash([]);
+    c.beginPath();
+    if (shape !== 'line') arrowhead(beforeEnd, end);
+    if (shape === 'double-arrow') arrowhead(pts[1], pts[0]);
+    c.stroke();
+    return;
   }
-  if (op.fill && (shape === 'rect' || shape === 'ellipse')) c.fill();
-  else c.stroke();
+  const { outline, detail } = shapePaths(op);
+  if (op.fill) {
+    c.globalAlpha = op.fill === 'tint' ? 0.2 : 1;
+    c.fill(outline);
+    c.globalAlpha = 1;
+  }
+  c.stroke(outline);
+  c.setLineDash([]);
+  if (detail) c.stroke(detail);
+}
+
+// Transform the shape's 0–100 paths into the drag box (geometry only, so the
+// stroke width isn't stretched along with it).
+function shapePaths({ shape, x1, y1, x2, y2 }) {
+  const outline = new Path2D();
+  const x = Math.min(x1, x2);
+  const y = Math.min(y1, y2);
+  const w = Math.abs(x2 - x1);
+  const h = Math.abs(y2 - y1);
+  if (shape === 'rounded' || shape === 'terminator') {
+    outline.roundRect(x, y, w, h, shape === 'rounded' ? Math.min(w, h) * 0.2 : Math.min(w, h) / 2);
+    return { outline, detail: null };
+  }
+  const def = SHAPES.get(shape);
+  const m = MIRRORED_SHAPES.has(shape)
+    ? new DOMMatrix([(x2 - x1) / 100, 0, 0, (y2 - y1) / 100, x1, y1])
+    : new DOMMatrix([w / 100, 0, 0, h / 100, x, y]);
+  outline.addPath(def.path, m);
+  let detail = null;
+  if (def.detailPath) {
+    detail = new Path2D();
+    detail.addPath(def.detailPath, m);
+  }
+  return { outline, detail };
 }
 
 function drawTextOp(c, op) {
@@ -670,7 +792,9 @@ function updateShape() {
   let y = ey;
   const dx = x - ax;
   const dy = y - ay;
-  if (shift && (op.shape === 'line' || op.shape === 'arrow')) {
+  if (shift && op.shape === 'elbow') {
+    // no snapping: an elbow is already orthogonal
+  } else if (shift && LINE_SHAPES.has(op.shape)) {
     const step = Math.PI / 4;
     const angle = Math.round(Math.atan2(dy, dx) / step) * step;
     const len = Math.hypot(dx, dy);
@@ -743,8 +867,9 @@ overlay.addEventListener('pointerdown', (e) => {
   const op = FREEHAND.has(tool)
     ? { id, type: 'stroke', color: tool === 'eraser' ? BG : state.color, width: baseWidth(tool), alpha: toolAlpha(tool),
       blend: tool === 'marker' ? 'multiply' : undefined, pts: [pt] }
-    : { id, type: 'shape', shape: tool, color: state.color, width: state.size, alpha: state.opacity,
-      fill: state.fillShapes, x1: pt[0], y1: pt[1], x2: pt[0], y2: pt[1] };
+    : { id, type: 'shape', shape: state.shape, color: state.color, width: state.size, alpha: state.opacity,
+      fill: LINE_SHAPES.has(state.shape) || state.fill === 'none' ? false : state.fill === 'tint' ? 'tint' : true,
+      dash: state.dashed, x1: pt[0], y1: pt[1], x2: pt[0], y2: pt[1] };
   draft = { op, pointerId: e.pointerId, start: pt, end: pt, shift: e.shiftKey, moved: false, sent: 0 };
   stylePreview(overlay, op);
   if (op.type === 'stroke') {
@@ -818,6 +943,75 @@ const swatchEls = COLORS.map((c) => {
   return b;
 });
 
+const shapeBtn = $('#shape-tool');
+const shapeMenu = $('#shape-menu');
+const shapeIcon = (name) => {
+  const { d, detail } = SHAPES.get(name);
+  const path = (p) => `<path d="${p}" vector-effect="non-scaling-stroke"/>`;
+  return `<svg viewBox="-8 -8 116 116" aria-hidden="true">${path(d)}${detail ? path(detail) : ''}</svg>`;
+};
+
+const shapeItems = SHAPE_GROUPS.flatMap(([title, entries]) => {
+  const heading = document.createElement('div');
+  heading.className = 'shape-group';
+  heading.textContent = title;
+  const grid = document.createElement('div');
+  grid.className = 'shape-grid';
+  shapeMenu.append(heading, grid);
+  return entries.map((entry) => {
+    const [name, label = SHAPES.get(name).label] = typeof entry === 'string' ? [entry] : entry;
+    const b = document.createElement('button');
+    b.className = 'shape-item';
+    b.dataset.shape = name;
+    b.title = label;
+    b.setAttribute('role', 'menuitem');
+    b.setAttribute('aria-label', label);
+    b.innerHTML = shapeIcon(name);
+    b.addEventListener('click', () => {
+      setShape(name);
+      closeShapeMenu();
+    });
+    grid.append(b);
+    return b;
+  });
+});
+
+function renderShapeButton() {
+  shapeBtn.innerHTML = `${shapeIcon(state.shape)}<span class="more"></span>`;
+  shapeBtn.title = `Shapes: ${SHAPES.get(state.shape).label.replace(/ \(.\)$/, '')} (S)`;
+  shapeItems.forEach((b) => b.classList.toggle('active', b.dataset.shape === state.shape));
+}
+
+function setShape(name) {
+  state.shape = name;
+  renderShapeButton();
+  setTool('shape');
+}
+
+function openShapeMenu() {
+  shapeMenu.hidden = false;
+  shapeBtn.setAttribute('aria-expanded', 'true');
+  const r = shapeBtn.getBoundingClientRect();
+  const m = shapeMenu.getBoundingClientRect();
+  const beside = getComputedStyle($('.toolbar')).flexDirection === 'column'; // desktop: right of the toolbar
+  const left = beside ? r.right + 8 : r.left;
+  const top = beside ? r.top : r.top - m.height - 8;
+  shapeMenu.style.left = `${Math.max(8, Math.min(left, innerWidth - m.width - 8))}px`;
+  shapeMenu.style.top = `${Math.max(8, Math.min(top, innerHeight - m.height - 8))}px`;
+}
+
+function closeShapeMenu() {
+  shapeMenu.hidden = true;
+  shapeBtn.setAttribute('aria-expanded', 'false');
+}
+
+const toggleShapeMenu = () => (shapeMenu.hidden ? openShapeMenu() : closeShapeMenu());
+
+shapeBtn.addEventListener('click', toggleShapeMenu);
+document.addEventListener('pointerdown', (e) => {
+  if (!shapeMenu.hidden && !shapeMenu.contains(e.target) && !shapeBtn.contains(e.target)) closeShapeMenu();
+});
+
 function setColor(c) {
   state.color = c;
   colorInput.value = c;
@@ -876,7 +1070,8 @@ opacityInput.addEventListener('input', () => {
   state.opacity = opacityInput.value / 100;
   $('#opacity-val').textContent = `${opacityInput.value}%`;
 });
-$('#fill-shapes').addEventListener('change', (e) => { state.fillShapes = e.target.checked; });
+$('#fill-mode').addEventListener('change', (e) => { state.fill = e.target.value; });
+$('#dashed').addEventListener('change', (e) => { state.dashed = e.target.checked; });
 $('#undo').addEventListener('click', undo);
 $('#redo').addEventListener('click', redo);
 $('#clear').addEventListener('click', clearCanvas);
@@ -919,8 +1114,15 @@ document.addEventListener('keydown', (e) => {
   } else if (mod && key === 's') {
     e.preventDefault();
     download();
+  } else if (e.key === 'Escape' && !shapeMenu.hidden) {
+    closeShapeMenu();
   } else if (!mod && !e.altKey && SHORTCUTS[key]) {
     setTool(SHORTCUTS[key]);
+  } else if (!mod && !e.altKey && SHAPE_KEYS[key]) {
+    setShape(SHAPE_KEYS[key]);
+  } else if (!mod && !e.altKey && key === 's') {
+    setTool('shape');
+    toggleShapeMenu();
   } else if (key === '[') {
     setSize(state.size - 2);
   } else if (key === ']') {
@@ -942,6 +1144,7 @@ document.addEventListener('keyup', (e) => {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
+renderShapeButton();
 setTool('brush');
 setColor(state.color);
 await openDoc('solo');
@@ -952,6 +1155,7 @@ const collab = setupCollab({
 
 window.addEventListener('resize', () => {
   commitText();
+  closeShapeMenu();
   fitToStage();
   collab.relayout();
 });

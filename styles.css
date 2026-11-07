@@ -265,3 +265,39 @@ dialog button.primary { border-color: var(--accent); }
   .brand { font-size: 0; gap: 0; }
 }
 #copy-link { flex: none; white-space: nowrap; }
+
+/* Shape picker */
+.tool { position: relative; }
+.tool .more {
+  position: absolute; right: 4px; bottom: 4px;
+  border: 3px solid transparent;
+  border-right-color: currentColor; border-bottom-color: currentColor;
+  opacity: .6;
+}
+.shape-menu {
+  position: fixed; z-index: 10;
+  max-height: calc(100dvh - 16px); overflow-y: auto;
+  padding: 6px 10px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.shape-menu[hidden] { display: none; }
+.shape-group {
+  margin: 8px 2px 4px;
+  color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+}
+.shape-grid { display: grid; grid-template-columns: repeat(6, 38px); gap: 2px; }
+.shape-item {
+  display: grid; place-items: center;
+  width: 38px; height: 38px; padding: 0;
+  border: 0; border-radius: 8px;
+  background: transparent; color: var(--text); cursor: pointer;
+}
+.shape-item.active { background: var(--accent-soft); color: var(--accent); }
+.shape-item svg { width: 22px; height: 22px; }
+.props select {
+  height: 28px; padding: 0 6px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel); color: var(--text); font: inherit;
+}

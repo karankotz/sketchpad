@@ -9,7 +9,12 @@ No build step and no dependencies: just static HTML, CSS and JavaScript.
 
 - **Live collaboration**: click **Share**, enter your name, and send the link. Anyone who opens it just types a name to join and draw with you in real time, with live cursors and avatars
 - Brush (pen pressure supported), highlighter and eraser
-- Line, arrow, rectangle and ellipse (Shift to snap or constrain), with optional fill
+- 37 shapes in a picker (press **S**), grouped into:
+  - **Lines & connectors**: line, arrow, double arrow, elbow connector
+  - **Basic**: rectangle, rounded rectangle, ellipse, triangles, diamond, polygons, star, heart, plus, block arrow, speech bubble, cloud, lightning
+  - **Flowchart**: terminator, process, decision, data, document, predefined process, manual input, delay, preparation
+  - **Architecture**: database, queue, server, cloud service, actor, user, component, folder/package, note, web app, mobile app
+- Shape fill (none, light tint or solid) and dashed lines, for architecture and flow diagrams. Hold Shift to snap lines or make shapes square
 - Text, paint-bucket fill and color picker
 - Color palette, custom color, size and opacity
 - Undo / redo (only your own changes, even on a shared board), clear, export to PNG
@@ -22,6 +27,7 @@ No build step and no dependencies: just static HTML, CSS and JavaScript.
 | Key | Action |
 | --- | --- |
 | B / M / E | Brush / highlighter / eraser |
+| S | Open the shape picker |
 | L / A / R / O | Line / arrow / rectangle / ellipse |
 | T / F / I | Text / fill / color picker |
 | `[` / `]` | Smaller / larger brush |

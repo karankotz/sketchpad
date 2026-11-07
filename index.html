@@ -30,15 +30,13 @@
     <button class="tool" data-tool="marker" data-icon="marker" title="Highlighter (M)" aria-label="Highlighter"></button>
     <button class="tool" data-tool="eraser" data-icon="eraser" title="Eraser (E)" aria-label="Eraser"></button>
     <span class="tool-sep"></span>
-    <button class="tool" data-tool="line" data-icon="line" title="Line (L) — hold Shift to snap" aria-label="Line"></button>
-    <button class="tool" data-tool="arrow" data-icon="arrow" title="Arrow (A) — hold Shift to snap" aria-label="Arrow"></button>
-    <button class="tool" data-tool="rect" data-icon="rect" title="Rectangle (R) — hold Shift for square" aria-label="Rectangle"></button>
-    <button class="tool" data-tool="ellipse" data-icon="ellipse" title="Ellipse (O) — hold Shift for circle" aria-label="Ellipse"></button>
+    <button class="tool" id="shape-tool" data-tool="shape" aria-label="Shapes" aria-haspopup="menu" aria-expanded="false"></button>
     <button class="tool" data-tool="text" data-icon="text" title="Text (T)" aria-label="Text"></button>
     <span class="tool-sep"></span>
     <button class="tool" data-tool="fill" data-icon="bucket" title="Fill (F)" aria-label="Fill"></button>
     <button class="tool" data-tool="picker" data-icon="pipette" title="Color picker (I)" aria-label="Color picker"></button>
   </nav>
+  <div id="shape-menu" class="shape-menu" role="menu" aria-label="Shapes" hidden></div>
 
   <main id="stage">
     <div id="canvas-wrap">
@@ -54,7 +52,14 @@
     <label class="color-custom" title="Custom color"><input type="color" id="color" value="#1e1e1e" aria-label="Custom color"></label>
     <label class="slider">Size <input type="range" id="size" min="1" max="80" value="6"><output id="size-val">6</output></label>
     <label class="slider">Opacity <input type="range" id="opacity" min="5" max="100" value="100"><output id="opacity-val">100%</output></label>
-    <label class="toggle"><input type="checkbox" id="fill-shapes"> Fill shapes</label>
+    <label class="slider">Fill
+      <select id="fill-mode" aria-label="Shape fill">
+        <option value="none">None</option>
+        <option value="tint">Light</option>
+        <option value="solid">Solid</option>
+      </select>
+    </label>
+    <label class="toggle"><input type="checkbox" id="dashed"> Dashed</label>
   </section>
 
   <dialog id="join-dialog" aria-labelledby="join-title">
