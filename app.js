@@ -1,4 +1,6 @@
 import { setupCollab } from './collab.js';
+import { setupAssistant } from './assistant.js';
+import { drawDiagram, layoutDiagram, normalizeSpec } from './diagram.js';
 
 // ---------------------------------------------------------------------------
 // Icons (Lucide-style, 24x24 stroke paths)
@@ -20,6 +22,9 @@ const ICONS = {
   trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
   users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  sparkles: '<path d="M11 3 12.9 8.1 18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9z"/><path d="M19 14l.8 2.2 2.2.8-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z"/>',
+  sliders: '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
+  close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
 };
 
 document.querySelectorAll('[data-icon]').forEach((el) => {
@@ -235,7 +240,8 @@ function insertOp(op) {
 function addLocalOp(fields) {
   const op = { id: crypto.randomUUID(), ...fields, by: clientId, c: doc.clock + 1, u: false, uv: 0 };
   insertOp(op); // always last: its clock is ahead of everything we've seen
-  renderOp(op);
+  if (op.replaces) renderAll();
+  else renderOp(op);
   undoIds.push(op.id);
   redoIds = [];
   updateHistoryButtons();
@@ -253,7 +259,7 @@ async function receiveOps(list, forceFull = false) {
     const tail = insertOp(op);
     if (tail === null) continue;
     previews.forEach((p) => { if (p.op?.id === op.id) clearPreview(p); });
-    if (tail && !full) renderOp(op);
+    if (tail && !full && !op.replaces) renderOp(op);
     else full = true;
   }
   if (full) renderAll();
@@ -341,6 +347,12 @@ function sanitizeOp(o) {
       return { ...base, type: 'image', src: o.src, x: o.x, y: o.y, w: o.w, h: o.h };
     case 'clear':
       return { ...base, type: 'clear' };
+    case 'diagram': {
+      const spec = normalizeSpec(o);
+      if (!spec || !coords('x', 'y', 'cw', 'ch')) return null;
+      return { ...base, type: 'diagram', ...spec, x: o.x, y: o.y, cw: clamp(o.cw, 20, 400), ch: clamp(o.ch, 20, 400),
+        replaces: typeof o.replaces === 'string' && o.replaces.length <= 64 ? o.replaces : undefined };
+    }
     default:
       return null;
   }
@@ -404,8 +416,13 @@ function scheduleRender() {
   requestAnimationFrame(renderAll);
 }
 
+// A diagram op that revises an earlier one hides it while the revision is visible.
+const replacedIds = () => new Set(doc.ops.filter((op) => op.type === 'diagram' && !op.u && op.replaces).map((op) => op.replaces));
+let replaced = new Set();
+
 function renderAll() {
   renderQueued = false;
+  replaced = replacedIds();
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, W, H);
   for (const op of doc.ops) renderOp(op);
@@ -423,6 +440,10 @@ function renderOp(op) {
   if (op.type === 'image') {
     const img = images.get(op.id);
     if (img) ctx.drawImage(img, op.x, op.y, op.w, op.h);
+    return;
+  }
+  if (op.type === 'diagram') {
+    if (!replaced.has(op.id)) drawDiagram(ctx, op, drawShapeOp);
     return;
   }
   sctx.clearRect(0, 0, W, H);
@@ -1024,6 +1045,29 @@ function setSize(n) {
   $('#size-val').textContent = state.size;
 }
 
+// The diagram the assistant edits: the newest visible one since the last clear.
+function currentDiagramOp() {
+  const hidden = replacedIds();
+  for (let i = doc.ops.length - 1; i >= 0; i--) {
+    const op = doc.ops[i];
+    if (op.u) continue;
+    if (op.type === 'clear') return null;
+    if (op.type === 'diagram' && !hidden.has(op.id)) return op;
+  }
+  return null;
+}
+
+function getDiagram() {
+  const op = currentDiagramOp();
+  return op && { title: op.title, nodes: op.nodes, edges: op.edges, groups: op.groups };
+}
+
+function putDiagram(spec) {
+  commitText();
+  const prev = currentDiagramOp();
+  addLocalOp({ type: 'diagram', ...spec, ...layoutDiagram(spec, W, H), replaces: prev?.id });
+}
+
 function clearCanvas() {
   commitText();
   addLocalOp({ type: 'clear' });
@@ -1148,6 +1192,8 @@ renderShapeButton();
 setTool('brush');
 setColor(state.color);
 await openDoc('solo');
+
+setupAssistant({ getDiagram, putDiagram });
 
 const collab = setupCollab({
   clientId, net, wrap, openDoc, exportDoc, mergeDoc, receiveOps, applyUndo, livePreview, removePreview, toScreen,

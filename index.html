@@ -18,6 +18,7 @@
       <button id="import" data-icon="image" title="Insert image (or paste / drop one)" aria-label="Insert image"></button>
       <button id="clear" data-icon="trash" title="Clear canvas" aria-label="Clear canvas"></button>
       <span class="sep"></span>
+      <button id="assistant-btn" data-icon="sparkles" title="System design assistant" aria-expanded="false"><span>Design AI</span></button>
       <div id="presence" class="presence" aria-label="People on this board"></div>
       <button id="share" data-icon="users" title="Draw together live"><span>Share</span></button>
       <button id="download" class="primary" data-icon="download" title="Download PNG (Ctrl+S)"><span>Save</span></button>
@@ -46,6 +47,33 @@
     </div>
     <div id="toast" role="status" hidden></div>
   </main>
+
+  <aside id="assistant" class="assistant" aria-label="System design assistant" hidden>
+    <header class="assist-head">
+      <div class="assist-tabs" role="tablist">
+        <button role="tab" id="tab-chat" aria-selected="true" aria-controls="assist-chat">Assistant</button>
+        <button role="tab" id="tab-library" aria-selected="false" aria-controls="assist-library">Frameworks</button>
+      </div>
+      <button id="assist-new" title="Start a new conversation">New chat</button>
+      <button id="assist-settings-btn" data-icon="sliders" title="Assistant settings" aria-label="Assistant settings"></button>
+      <button id="assist-close" data-icon="close" title="Close" aria-label="Close assistant"></button>
+    </header>
+    <section id="assist-chat" class="assist-chat" role="tabpanel" aria-labelledby="tab-chat">
+      <div id="assist-log" class="assist-log" aria-live="polite"></div>
+      <form id="assist-form" class="assist-form">
+        <textarea id="assist-input" rows="2" maxlength="4000" placeholder="What do you want to design?" aria-label="Message the assistant"></textarea>
+        <button type="submit" id="assist-send" class="primary">Send</button>
+      </form>
+    </section>
+    <section id="assist-library" class="assist-library" role="tabpanel" aria-labelledby="tab-library" hidden>
+      <h3>Reference architectures</h3>
+      <p class="hint">Start from a proven framework, then ask the assistant to adapt it.</p>
+      <div id="template-list" class="template-list"></div>
+      <h3>Components</h3>
+      <p class="hint">Adds a building block to the current diagram.</p>
+      <div id="component-list" class="component-list"></div>
+    </section>
+  </aside>
 
   <section class="props" aria-label="Tool options">
     <div class="swatches" id="swatches"></div>
@@ -93,6 +121,30 @@
       <button type="button" id="leave-room">Leave board</button>
       <button type="button" id="share-done" class="primary">Done</button>
     </div>
+  </dialog>
+
+  <dialog id="assist-settings" aria-labelledby="assist-settings-title">
+    <form id="assist-settings-form">
+      <h2 id="assist-settings-title">Assistant settings</h2>
+      <p class="hint" id="assist-settings-hint">The assistant runs on Claude using your own Anthropic API key. Requests go straight from this browser to Anthropic.</p>
+      <label class="field">Anthropic API key
+        <input id="assist-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-...">
+        <small>Get one at <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener noreferrer">platform.claude.com</a>. Use is billed to your account.</small>
+      </label>
+      <label class="toggle"><input type="checkbox" id="assist-remember"> Remember the key on this device</label>
+      <label class="field" style="margin-top:14px">Model
+        <select id="assist-model">
+          <option value="claude-opus-5-5">Claude Opus 5.5 (best designs)</option>
+          <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (faster, cheaper)</option>
+        </select>
+      </label>
+      <label class="toggle"><input type="checkbox" id="assist-web" checked> Search the web for current information</label>
+      <div class="dialog-actions">
+        <button type="button" id="assist-forget">Forget key</button>
+        <button type="button" id="assist-settings-cancel">Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
   </dialog>
 
   <script type="module" src="app.js"></script>
