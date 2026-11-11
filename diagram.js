@@ -427,16 +427,59 @@ function exitPoint(b, [tx, ty]) {
   return [cx + dx * t, cy + dy * t];
 }
 
+// The box a node is drawn in, in canvas coordinates.
+export function nodeBox(op, n) {
+  const w = op.cw * 0.74;
+  const h = op.ch * 0.5;
+  return { x: op.x + n.col * op.cw + (op.cw - w) / 2, y: op.y + n.row * op.ch + (op.ch - h) / 2, w, h };
+}
+
+const center = (b) => [b.x + b.w / 2, b.y + b.h / 2];
+
+// Where an edge's line starts and ends.
+export function edgeEnds(op, e) {
+  const byId = new Map(op.nodes.map((n) => [n.id, n]));
+  const a = nodeBox(op, byId.get(e.from));
+  const b = nodeBox(op, byId.get(e.to));
+  return [exitPoint(a, center(b)), exitPoint(b, center(a))];
+}
+
+// The grid cell under a canvas point, kept inside the grid and the canvas.
+export function cellAt(op, px, py, W, H) {
+  const maxCol = Math.min(GRID.cols, Math.floor((W - op.x) / op.cw)) - 1;
+  const maxRow = Math.min(GRID.rows, Math.floor((H - op.y) / op.ch)) - 1;
+  return [
+    Math.max(0, Math.min(maxCol, Math.floor((px - op.x) / op.cw))),
+    Math.max(0, Math.min(maxRow, Math.floor((py - op.y) / op.ch))),
+  ];
+}
+
+function segmentDistance(px, py, [x1, y1], [x2, y2]) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy || 1)));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+// What's under a canvas point: a node (checked first, topmost last) or an edge.
+export function hitDiagram(op, px, py) {
+  for (const n of [...op.nodes].reverse()) {
+    const b = nodeBox(op, n);
+    if (px >= b.x - 4 && px <= b.x + b.w + 4 && py >= b.y - 4 && py <= b.y + b.h + 4) return { type: 'node', id: n.id };
+  }
+  let best = null;
+  for (const e of op.edges) {
+    const d = segmentDistance(px, py, ...edgeEnds(op, e));
+    if (d <= 8 && (!best || d < best.d)) best = { d, from: e.from, to: e.to };
+  }
+  return best && { type: 'edge', from: best.from, to: best.to };
+}
+
 export function drawDiagram(c, op, drawShape) {
   const { x, y, cw, ch } = op;
   const fs = Math.max(9, Math.min(15, cw * 0.075));
   const byId = new Map(op.nodes.map((n) => [n.id, n]));
-  const box = (n) => {
-    const w = cw * 0.74;
-    const h = ch * 0.5;
-    return { x: x + n.col * cw + (cw - w) / 2, y: y + n.row * ch + (ch - h) / 2, w, h };
-  };
-  const center = (b) => [b.x + b.w / 2, b.y + b.h / 2];
+  const box = (n) => nodeBox(op, n);
   c.save();
   c.textAlign = 'left';
   c.textBaseline = 'alphabetic';
@@ -472,10 +515,7 @@ export function drawDiagram(c, op, drawShape) {
 
   const edgeLabels = [];
   for (const e of op.edges) {
-    const a = box(byId.get(e.from));
-    const b = box(byId.get(e.to));
-    const p1 = exitPoint(a, center(b));
-    const p2 = exitPoint(b, center(a));
+    const [p1, p2] = edgeEnds(op, e);
     drawShape(c, {
       shape: e.both ? 'double-arrow' : 'arrow', x1: p1[0], y1: p1[1], x2: p2[0], y2: p2[1],
       color: '#495057', width: 1.75, dash: e.async,

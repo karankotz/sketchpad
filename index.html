@@ -27,6 +27,7 @@
   </header>
 
   <nav class="toolbar" aria-label="Tools">
+    <button class="tool" data-tool="select" data-icon="pointer" title="Select and edit diagrams (V)" aria-label="Select"></button>
     <button class="tool" data-tool="brush" data-icon="brush" title="Brush (B)" aria-label="Brush"></button>
     <button class="tool" data-tool="marker" data-icon="marker" title="Highlighter (M)" aria-label="Highlighter"></button>
     <button class="tool" data-tool="eraser" data-icon="eraser" title="Eraser (E)" aria-label="Eraser"></button>
@@ -44,6 +45,7 @@
       <canvas id="board"></canvas>
       <canvas id="overlay"></canvas>
       <div id="cursor"></div>
+      <div id="diagram-bar" class="diagram-bar" role="toolbar" aria-label="Diagram item" hidden></div>
     </div>
     <div id="toast" role="status" hidden></div>
   </main>

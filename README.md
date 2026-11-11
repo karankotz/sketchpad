@@ -9,6 +9,7 @@ No build step and no dependencies: just static HTML, CSS and JavaScript.
 
 - **AI system design assistant** (click **Design AI**): describe a system and it designs it with you on the board. It asks about requirements, offers ready-made frameworks, draws the architecture, then suggests the next improvement (add a cache, then pick a caching strategy, and so on) as clickable choices. It searches the web for current facts like managed-service limits and pricing
 - **Frameworks and components**: six reference architectures (classic web app, microservices, event-driven, serverless, data pipeline, real-time chat) and 24 building blocks (load balancer, cache, queue, database and more) you can drop in without AI
+- **Edit diagrams by hand** with the select tool (**V**): drag a box to move it (dropping on another box swaps them), drag its ⊕ handle onto another box to connect them, double-click to rename or change its type, and select an arrow to label it, make it async or two-way, or reverse it. Delete removes the selection. Each edit is one undo step, and the assistant sees your changes
 - **Live collaboration**: click **Share**, enter your name, and send the link. Anyone who opens it just types a name to join and draw with you in real time, with live cursors and avatars
 - Brush (pen pressure supported), highlighter and eraser
 - 37 shapes in a picker (press **S**), grouped into:
@@ -28,6 +29,7 @@ No build step and no dependencies: just static HTML, CSS and JavaScript.
 
 | Key | Action |
 | --- | --- |
+| V | Select and edit diagrams |
 | B / M / E | Brush / highlighter / eraser |
 | S | Open the shape picker |
 | L / A / R / O | Line / arrow / rectangle / ellipse |
@@ -35,6 +37,7 @@ No build step and no dependencies: just static HTML, CSS and JavaScript.
 | `[` / `]` | Smaller / larger brush |
 | Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z | Undo, redo |
 | Ctrl/Cmd+S | Download PNG |
+| Enter / Delete / Esc | Edit / delete / deselect the selected diagram item |
 
 ## Run locally
 

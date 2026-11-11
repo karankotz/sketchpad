@@ -124,6 +124,34 @@ button.primary:hover:not(:disabled) { background: var(--accent); filter: brightn
   resize: none; overflow: hidden; white-space: pre;
   -webkit-user-select: text; user-select: text;
 }
+.diagram-bar {
+  position: absolute; z-index: 3;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
+  max-width: calc(100% - 8px);
+  padding: 4px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel); color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.diagram-bar[hidden] { display: none; }
+.diagram-bar button {
+  height: 30px; padding: 0 10px;
+  border: 0; border-radius: 6px;
+  background: transparent; cursor: pointer; white-space: nowrap;
+}
+.diagram-bar button.primary { background: var(--accent); color: #fff; }
+.diagram-bar button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.diagram-bar button.danger { color: #e03131; }
+.diagram-bar input, .diagram-bar select {
+  height: 30px; padding: 0 8px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg); color: var(--text); font: inherit;
+  -webkit-user-select: text; user-select: text;
+}
+.diagram-bar input { width: 150px; }
+.diagram-bar input:focus, .diagram-bar select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.diagram-bar .bar-sep { width: 1px; height: 20px; background: var(--border); }
 #stage.dragging::after {
   content: "Drop image to insert";
   position: absolute; inset: 12px;

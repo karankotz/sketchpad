@@ -1,6 +1,6 @@
 import { setupCollab } from './collab.js';
 import { setupAssistant } from './assistant.js';
-import { drawDiagram, layoutDiagram, normalizeSpec } from './diagram.js';
+import { KINDS, cellAt, drawDiagram, edgeEnds, editSpec, hitDiagram, layoutDiagram, nodeBox, normalizeSpec } from './diagram.js';
 
 // ---------------------------------------------------------------------------
 // Icons (Lucide-style, 24x24 stroke paths)
@@ -25,6 +25,7 @@ const ICONS = {
   sparkles: '<path d="M11 3 12.9 8.1 18 10l-5.1 1.9L11 17l-1.9-5.1L4 10l5.1-1.9z"/><path d="M19 14l.8 2.2 2.2.8-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z"/>',
   sliders: '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
   close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  pointer: '<path d="M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.43l-1.58 6.13a.5.5 0 0 1-.95.06z"/>',
 };
 
 document.querySelectorAll('[data-icon]').forEach((el) => {
@@ -52,7 +53,7 @@ const DOC_PREFIX = 'sketchpad:doc:';
 const FILL_TOLERANCE = 40;
 const COLORS = ['#1e1e1e', '#ffffff', '#868e96', '#e03131', '#f76707', '#f59f00', '#2f9e44', '#1971c2', '#7048e8', '#c2255c', '#99e9f2', '#ffec99'];
 const FREEHAND = new Set(['brush', 'marker', 'eraser']);
-const SHORTCUTS = { b: 'brush', m: 'marker', e: 'eraser', t: 'text', f: 'fill', i: 'picker' };
+const SHORTCUTS = { v: 'select', b: 'brush', m: 'marker', e: 'eraser', t: 'text', f: 'fill', i: 'picker' };
 const SHAPE_KEYS = { l: 'line', a: 'arrow', r: 'rect', o: 'ellipse' };
 
 // Shapes are drawn into the dragged box. Lines use the two endpoints; the rest
@@ -416,8 +417,23 @@ function scheduleRender() {
   requestAnimationFrame(renderAll);
 }
 
-// A diagram op that revises an earlier one hides it while the revision is visible.
-const replacedIds = () => new Set(doc.ops.filter((op) => op.type === 'diagram' && !op.u && op.replaces).map((op) => op.replaces));
+// Revisions of a diagram form a lineage (via `replaces`); only the newest
+// visible op of each lineage is drawn. Undoing a revision brings back the one
+// before it, and two people revising at once don't draw on top of each other.
+function replacedIds() {
+  const hidden = new Set();
+  const root = new Map();   // op id -> id of its lineage's first op
+  const latest = new Map(); // lineage -> newest visible op id
+  for (const op of doc.ops) {
+    if (op.type !== 'diagram') continue;
+    const r = op.replaces ? root.get(op.replaces) ?? op.replaces : op.id;
+    root.set(op.id, r);
+    if (op.u) continue;
+    if (latest.has(r)) hidden.add(latest.get(r));
+    latest.set(r, op.id);
+  }
+  return hidden;
+}
 let replaced = new Set();
 
 function renderAll() {
@@ -426,6 +442,7 @@ function renderAll() {
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, W, H);
   for (const op of doc.ops) renderOp(op);
+  drawSelection();
 }
 
 // Each op is painted opaque on a scratch canvas, then composited with its
@@ -877,6 +894,7 @@ overlay.addEventListener('pointerdown', (e) => {
   if (draft) return; // ignore extra fingers mid-stroke
   const pt = toPoint(e);
   const tool = state.tool;
+  if (tool === 'select') return selectDown(e, pt);
   if (tool === 'fill') return addFill(pt);
   if (tool === 'picker') return pickColor(pt);
   if (tool === 'text') {
@@ -903,6 +921,7 @@ overlay.addEventListener('pointermove', (e) => {
   moveCursor(e);
   const pt = toPoint(e);
   net.cursor([Math.round(pt[0]), Math.round(pt[1])]);
+  if (state.tool === 'select') return selectMove(e, pt);
   if (!draft || e.pointerId !== draft.pointerId) return;
   const { op } = draft;
   if (op.type === 'stroke') {
@@ -932,6 +951,9 @@ function endDraft(e) {
 }
 overlay.addEventListener('pointerup', endDraft);
 overlay.addEventListener('pointercancel', endDraft);
+overlay.addEventListener('pointerup', (e) => selectUp(e, true));
+overlay.addEventListener('pointercancel', (e) => selectUp(e, false));
+overlay.addEventListener('dblclick', selectDoubleClick);
 overlay.addEventListener('pointerleave', () => {
   cursor.style.display = 'none';
   net.cursor(null);
@@ -949,7 +971,14 @@ function setTool(tool) {
   if (tool === 'picker' && state.tool !== 'picker') state.prevTool = state.tool;
   state.tool = tool;
   document.querySelectorAll('.tool').forEach((b) => b.classList.toggle('active', b.dataset.tool === tool));
-  overlay.style.cursor = FREEHAND.has(tool) ? 'none' : tool === 'text' ? 'text' : 'crosshair';
+  overlay.style.cursor = FREEHAND.has(tool) ? 'none' : tool === 'text' ? 'text' : tool === 'select' ? 'default' : 'crosshair';
+  if (tool === 'select') {
+    drawSelection();
+  } else if (sel || dg) {
+    dg = null;
+    setSel(null);
+    clearOverlay();
+  }
 }
 
 const swatchEls = COLORS.map((c) => {
@@ -1068,6 +1097,309 @@ function putDiagram(spec) {
   addLocalOp({ type: 'diagram', ...spec, ...layoutDiagram(spec, W, H), replaces: prev?.id });
 }
 
+// ---------------------------------------------------------------------------
+// Editing diagrams by hand (the select tool). Every edit is a new diagram op
+// that replaces the current one at the same position, so it's one undo step.
+// ---------------------------------------------------------------------------
+const dgBar = $('#diagram-bar');
+const SELECT_COLOR = '#4f6bed';
+const HANDLE_R = 7;
+let sel = null;     // { type: 'node', id } or { type: 'edge', from, to } in the current diagram
+let barForm = false; // the bar shows the edit form rather than the actions
+let dg = null;      // drag in progress: { mode: 'move' | 'connect', pointerId, id, start, pt, moved }
+
+function selectedItem(op = currentDiagramOp()) {
+  if (!op || !sel) return null;
+  if (sel.type === 'node') return op.nodes.find((n) => n.id === sel.id) ?? null;
+  return op.edges.find((e) => e.from === sel.from && e.to === sel.to) ?? null;
+}
+
+const handleAt = (op, n) => {
+  const b = nodeBox(op, n);
+  return [b.x + b.w + 5, b.y + b.h / 2];
+};
+
+function editDiagram(input) {
+  const op = currentDiagramOp();
+  if (!op) return;
+  const { spec } = editSpec(getDiagram(), input);
+  addLocalOp({ type: 'diagram', ...spec, x: op.x, y: op.y, cw: op.cw, ch: op.ch, replaces: op.id });
+}
+
+function setSel(next) {
+  sel = next;
+  barForm = false;
+  renderBar();
+  drawSelection();
+}
+
+function drawSelection() {
+  if (state.tool !== 'select' || draft) return;
+  octx.clearRect(0, 0, W, H);
+  const op = currentDiagramOp();
+  const item = selectedItem(op);
+  if (sel && !item) {
+    sel = null;
+    renderBar();
+  }
+  if (!item) return;
+  octx.save();
+  octx.strokeStyle = SELECT_COLOR;
+  octx.fillStyle = SELECT_COLOR;
+  octx.lineWidth = 2;
+  if (sel.type === 'edge') {
+    const [p1, p2] = edgeEnds(op, item);
+    octx.globalAlpha = 0.35;
+    octx.lineWidth = 8;
+    octx.lineCap = 'round';
+    octx.beginPath();
+    octx.moveTo(...p1);
+    octx.lineTo(...p2);
+    octx.stroke();
+  } else {
+    const b = nodeBox(op, item);
+    octx.beginPath();
+    octx.roundRect(b.x - 5, b.y - 5, b.w + 10, b.h + 10, 8);
+    octx.stroke();
+    if (dg?.mode === 'move' && dg.moved) {
+      const [c, r] = moveTarget(op, item);
+      const t = nodeBox(op, { col: c, row: r });
+      const dx = dg.pt[0] - dg.start[0];
+      const dy = dg.pt[1] - dg.start[1];
+      octx.setLineDash([6, 4]);
+      octx.beginPath();
+      octx.roundRect(t.x - 5, t.y - 5, t.w + 10, t.h + 10, 8);
+      octx.stroke();
+      octx.globalAlpha = 0.15;
+      octx.fillRect(b.x + dx, b.y + dy, b.w, b.h);
+    } else {
+      const [hx, hy] = handleAt(op, item);
+      octx.beginPath();
+      octx.arc(hx, hy, HANDLE_R, 0, Math.PI * 2);
+      octx.fill();
+      octx.strokeStyle = '#ffffff';
+      octx.beginPath();
+      octx.moveTo(hx - 3.5, hy);
+      octx.lineTo(hx + 3.5, hy);
+      octx.moveTo(hx, hy - 3.5);
+      octx.lineTo(hx, hy + 3.5);
+      octx.stroke();
+    }
+    if (dg?.mode === 'connect') {
+      const hit = hitDiagram(op, ...dg.pt);
+      const target = hit?.type === 'node' && hit.id !== item.id && op.nodes.find((n) => n.id === hit.id);
+      if (target) {
+        const t = nodeBox(op, target);
+        octx.beginPath();
+        octx.roundRect(t.x - 5, t.y - 5, t.w + 10, t.h + 10, 8);
+        octx.stroke();
+      }
+      drawShapeOp(octx, { shape: 'arrow', x1: handleAt(op, item)[0], y1: handleAt(op, item)[1], x2: dg.pt[0], y2: dg.pt[1],
+        color: SELECT_COLOR, width: 2, dash: true });
+    }
+  }
+  octx.restore();
+  placeBar();
+}
+
+// The cell a dragged node would land in: under its center, shifted by the drag.
+function moveTarget(op, n) {
+  const b = nodeBox(op, n);
+  return cellAt(op, b.x + b.w / 2 + dg.pt[0] - dg.start[0], b.y + b.h / 2 + dg.pt[1] - dg.start[1], W, H);
+}
+
+function selectDown(e, pt) {
+  const op = currentDiagramOp();
+  if (!op) return setSel(null);
+  const node = sel?.type === 'node' && selectedItem(op);
+  if (node && Math.hypot(pt[0] - handleAt(op, node)[0], pt[1] - handleAt(op, node)[1]) <= HANDLE_R + 4) {
+    dg = { mode: 'connect', pointerId: e.pointerId, id: node.id, start: pt, pt, moved: false };
+  } else {
+    const hit = hitDiagram(op, pt[0], pt[1]);
+    const same = hit && sel && hit.type === sel.type && hit.id === sel.id && hit.from === sel.from && hit.to === sel.to;
+    if (!same) setSel(hit);
+    if (hit?.type === 'node') dg = { mode: 'move', pointerId: e.pointerId, id: hit.id, start: pt, pt, moved: false };
+  }
+  if (dg) {
+    overlay.setPointerCapture(e.pointerId);
+    dgBar.hidden = true;
+  }
+}
+
+function selectMove(e, pt) {
+  if (!dg) {
+    // Hover feedback: what a press here would do.
+    const op = currentDiagramOp();
+    const node = sel?.type === 'node' && selectedItem(op);
+    const onHandle = node && Math.hypot(pt[0] - handleAt(op, node)[0], pt[1] - handleAt(op, node)[1]) <= HANDLE_R + 4;
+    const hit = op && !onHandle && hitDiagram(op, pt[0], pt[1]);
+    overlay.style.cursor = onHandle ? 'crosshair' : hit?.type === 'node' ? 'move' : hit ? 'pointer' : 'default';
+    return;
+  }
+  if (e.pointerId !== dg.pointerId) return;
+  dg.pt = pt;
+  if (Math.hypot(pt[0] - dg.start[0], pt[1] - dg.start[1]) > 4) dg.moved = true;
+  drawSelection();
+}
+
+function selectUp(e, commit) {
+  if (!dg || e.pointerId !== dg.pointerId) return;
+  const op = currentDiagramOp();
+  const node = op?.nodes.find((n) => n.id === dg.id);
+  const d = dg;
+  dg = null;
+  if (commit && node && d.moved) {
+    if (d.mode === 'move') {
+      dg = d; // moveTarget reads the drag
+      const [col, row] = moveTarget(op, node);
+      dg = null;
+      if (col !== node.col || row !== node.row) {
+        const other = op.nodes.find((n) => n.col === col && n.row === row);
+        const update = [{ id: node.id, col, row }];
+        if (other) update.push({ id: other.id, col: node.col, row: node.row }); // swap places
+        editDiagram({ update_nodes: update });
+      }
+    } else {
+      const hit = hitDiagram(op, ...d.pt);
+      if (hit?.type === 'node' && hit.id !== node.id) connect(op, node.id, hit.id);
+    }
+  }
+  renderBar();
+  drawSelection();
+}
+
+function connect(op, from, to) {
+  const existing = op.edges.find((e) => (e.from === from && e.to === to) || (e.from === to && e.to === from));
+  if (!existing) editDiagram({ add_edges: [{ from, to }] });
+  setSel({ type: 'edge', from: existing?.from ?? from, to: existing?.to ?? to });
+}
+
+function selectDoubleClick(e) {
+  if (state.tool !== 'select') return;
+  const op = currentDiagramOp();
+  const pt = toPoint(e);
+  const hit = op && hitDiagram(op, pt[0], pt[1]);
+  if (!hit) return;
+  sel = hit;
+  openSelectionForm();
+}
+
+const edgeInput = (e, changes = {}) => ({ from: e.from, to: e.to, label: e.label, async: e.async, bidirectional: e.both, ...changes });
+
+// Replaces an edge with `next` (or deletes it), keeping a separate edge in the
+// opposite direction intact, since remove_edges drops both directions.
+function replaceEdge(item, next) {
+  const reverse = currentDiagramOp().edges.find((e) => e.from === item.to && e.to === item.from);
+  const add = [next, reverse && edgeInput(reverse)].filter(Boolean);
+  editDiagram({ remove_edges: [{ from: item.from, to: item.to }], add_edges: add });
+}
+
+function deleteSelection() {
+  const item = selectedItem();
+  if (!item) return;
+  if (sel.type === 'node') editDiagram({ remove_nodes: [item.id] });
+  else replaceEdge(item, null);
+  setSel(null);
+}
+
+function openSelectionForm() {
+  if (!selectedItem()) return;
+  barForm = true;
+  renderBar();
+  drawSelection();
+  dgBar.querySelector('input')?.select();
+}
+
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+
+function renderBar() {
+  const item = selectedItem();
+  dgBar.replaceChildren();
+  dgBar.hidden = !item || !!dg;
+  if (!item) return;
+  const btn = (text, onclick, extra = {}) => el('button', { type: 'button', textContent: text, onclick, ...extra });
+  const sep = () => el('span', { className: 'bar-sep' });
+
+  if (barForm) {
+    const form = el('form', { style: 'display: contents' });
+    const cancel = btn('Cancel', () => setSel({ ...sel }));
+    if (sel.type === 'node') {
+      const label = el('input', { value: item.label, maxLength: 40, placeholder: 'Name', ariaLabel: 'Name' });
+      const tech = el('input', { value: item.tech, maxLength: 40, placeholder: 'Details (e.g. Redis)', ariaLabel: 'Details' });
+      const kind = el('select', { ariaLabel: 'Type' },
+        ...Object.entries(KINDS).map(([k, [name]]) => el('option', { value: k, textContent: name, selected: k === item.kind })));
+      form.append(label, tech, kind, btn('Save', null, { type: 'submit', className: 'primary' }), cancel);
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        editDiagram({ update_nodes: [{ id: item.id, label: label.value, tech: tech.value, kind: kind.value }] });
+        setSel({ ...sel });
+      };
+    } else {
+      const label = el('input', { value: item.label, maxLength: 30, placeholder: 'Label (e.g. reads)', ariaLabel: 'Label' });
+      form.append(label, btn('Save', null, { type: 'submit', className: 'primary' }), cancel);
+      form.onsubmit = (e) => {
+        e.preventDefault();
+        replaceEdge(item, edgeInput(item, { label: label.value }));
+        setSel({ ...sel });
+      };
+    }
+    form.onkeydown = (e) => {
+      if (e.key === 'Escape') setSel({ ...sel });
+    };
+    dgBar.append(form);
+    return;
+  }
+
+  if (sel.type === 'node') {
+    dgBar.append(
+      btn('Edit', openSelectionForm, { title: 'Rename or change type (Enter, or double-click)' }),
+      el('span', { textContent: 'Drag to move · drag ⊕ to connect', style: 'padding: 0 6px; color: var(--muted)' }),
+      sep(),
+      btn('Delete', deleteSelection, { className: 'danger', title: 'Delete (Del)' }),
+    );
+  } else {
+    const toggle = (text, key, field) => btn(text, () => replaceEdge(item, edgeInput(item, { [key]: !item[field] })),
+      { ariaPressed: String(item[field]) });
+    const hasReverse = currentDiagramOp().edges.some((e) => e.from === item.to && e.to === item.from);
+    dgBar.append(
+      btn('Label', openSelectionForm, { title: 'Edit the label (Enter, or double-click)' }),
+      toggle('Async', 'async', 'async'),
+      toggle('Two-way', 'bidirectional', 'both'),
+      btn('Reverse', () => {
+        replaceEdge(item, edgeInput(item, { from: item.to, to: item.from }));
+        setSel({ type: 'edge', from: item.to, to: item.from });
+      }, { disabled: hasReverse, title: 'Flip the direction' }),
+      sep(),
+      btn('Delete', deleteSelection, { className: 'danger', title: 'Delete (Del)' }),
+    );
+  }
+}
+
+// Keeps the bar just above the selection (or below it near the top edge).
+function placeBar() {
+  if (dgBar.hidden) return;
+  const op = currentDiagramOp();
+  const item = selectedItem(op);
+  if (!item) return;
+  let box;
+  if (sel.type === 'node') {
+    box = nodeBox(op, item);
+  } else {
+    const [[x1, y1], [x2, y2]] = edgeEnds(op, item);
+    box = { x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1) };
+  }
+  const top = toScreen(box.x + box.w / 2, box.y - 8);
+  const bottom = toScreen(box.x, box.y + box.h + 8);
+  const w = dgBar.offsetWidth;
+  const h = dgBar.offsetHeight;
+  dgBar.style.left = `${Math.max(4, Math.min(wrap.clientWidth - w - 4, top.x - w / 2))}px`;
+  dgBar.style.top = `${top.y - h >= 4 ? top.y - h : bottom.y}px`;
+}
+
 function clearCanvas() {
   commitText();
   addLocalOp({ type: 'clear' });
@@ -1145,10 +1477,18 @@ stage.addEventListener('drop', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.target.closest?.('textarea, dialog')) return;
+  if (e.target.closest?.('textarea, dialog, #diagram-bar')) return;
   const mod = e.metaKey || e.ctrlKey;
   const key = e.key.toLowerCase();
-  if (mod && key === 'z') {
+  if (sel && !mod && (e.key === 'Delete' || e.key === 'Backspace')) {
+    e.preventDefault();
+    deleteSelection();
+  } else if (sel && e.key === 'Escape') {
+    setSel(null);
+  } else if (sel && e.key === 'Enter') {
+    e.preventDefault();
+    openSelectionForm();
+  } else if (mod && key === 'z') {
     e.preventDefault();
     if (e.shiftKey) redo();
     else undo();
@@ -1203,5 +1543,6 @@ window.addEventListener('resize', () => {
   commitText();
   closeShapeMenu();
   fitToStage();
+  placeBar();
   collab.relayout();
 });
